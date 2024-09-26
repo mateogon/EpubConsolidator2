@@ -1,0 +1,13 @@
+# Ignore all files in the extracted_text/ directory
+extracted_text/*
+
+# But don't ignore the directory itself
+!extracted_text/
+
+# Include any placeholder files to keep empty directories
+!extracted_text/.gitkeep
+
+# Similarly, if you don't want to commit EPUB files
+epub_files/*
+!epub_files/
+!epub_files/.gitkeep
