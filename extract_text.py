@@ -4,13 +4,35 @@ from ebooklib import ITEM_DOCUMENT, ITEM_NAVIGATION
 from bs4 import BeautifulSoup
 from pathlib import Path
 
+def sanitize_filename(title, max_length=100):
+    """
+    Sanitizes the title to create a safe filename and limits its length.
+    
+    Args:
+        title (str): The original title.
+        max_length (int): Maximum allowed length for the filename.
+    
+    Returns:
+        str: A sanitized and truncated filename.
+    """
+    # Replace non-alphanumeric characters with underscores
+    safe_title = "".join([c if c.isalnum() else "_" for c in title])
+    
+    # Truncate the title to the maximum allowed length
+    if len(safe_title) > max_length:
+        safe_title = safe_title[:max_length]
+        # Optionally, remove trailing underscores
+        safe_title = safe_title.rstrip("_")
+    
+    return safe_title
+
 def extract_text_from_epub(epub_path, output_base_folder):
     book = epub.read_epub(epub_path)
     # Get the book title from the metadata, default to 'Unknown_Book' if not available
     book_title = book.get_metadata('DC', 'title')[0][0] if book.get_metadata('DC', 'title') else 'Unknown_Book'
 
     # Sanitize the book title for use in folder names
-    safe_book_title = "".join([c if c.isalnum() else "_" for c in book_title])
+    safe_book_title = sanitize_filename(book_title, max_length=100)
     output_folder = output_base_folder / safe_book_title
     output_folder.mkdir(parents=True, exist_ok=True)
 
@@ -43,7 +65,7 @@ def extract_text_from_epub(epub_path, output_base_folder):
 
                 # If no common title tags are found, check <em> tags with additional conditions
                 if not chapter_title:
-                    em_tags = soup.find_all('em')
+                    em_tags = soup.find_all('em')  
                     for em in em_tags:
                         # Assuming titles are often the first <em> tags and are isolated
                         if is_likely_title(em):
@@ -52,7 +74,9 @@ def extract_text_from_epub(epub_path, output_base_folder):
 
                 # Use title from navigation if possible
                 if not chapter_title and nav_titles:
-                    title = nav_titles.get(item_id, title)
+                    # Extract the filename part from content_src (e.g., "chapter1.xhtml#section")
+                    content_src = epub_item.get_name().split('/')[-1].split('#')[0]
+                    title = nav_titles.get(content_src, title)
 
                 if chapter_title:
                     title = chapter_title.get_text(strip=True)
@@ -61,10 +85,17 @@ def extract_text_from_epub(epub_path, output_base_folder):
 
                 # Filter and save chapters or large content
                 if len(content) > min_content_length:
-                    # Use title for filenames, sanitized for invalid characters
-                    safe_title = "".join([c if c.isalnum() else "_" for c in title])
+                    # Sanitize and limit the title length
+                    safe_title = sanitize_filename(title, max_length=100)
                     # Place the counter at the beginning for correct ordering
                     file_name = output_folder / f"{file_counter:03}_{safe_title}.txt"
+                    
+                    # Ensure the final file path doesn't exceed OS limits
+                    if len(str(file_name)) > 255:
+                        # Further truncate if necessary
+                        safe_title = sanitize_filename(title, max_length=100 - (len(f"{file_counter:03}_") + len(".txt")))
+                        file_name = output_folder / f"{file_counter:03}_{safe_title}.txt"
+                    
                     with open(file_name, 'w', encoding='utf-8') as file:
                         file.write(content)
                     file_counter += 1
@@ -116,6 +147,6 @@ def process_all_epubs(input_folder, output_folder):
 
 # Example usage
 if __name__ == "__main__":
-    input_folder = Path('epub_files')  # Folder containing your EPUB files
-    output_folder = Path('extracted_text')  # Folder to save the extracted text
+    input_folder = Path('epub_files')      # Folder containing your EPUB files
+    output_folder = Path('extracted_text') # Folder to save the extracted text
     process_all_epubs(input_folder, output_folder)
